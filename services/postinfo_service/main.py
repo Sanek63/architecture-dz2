@@ -13,8 +13,7 @@ app = FastAPI(title="postinfo-service")
 
 port = get_int_env("PORT", 3006)
 redis_client = create_redis_client(get_env("REDIS_URL", "redis://redis:6379/0"))
-read_conn = wait_for_connection(get_env("POSTINFO_REPLICA_DB_URL", "postgresql://app:app@postgres-replica:5432/posts"))
-master_conn = wait_for_connection(get_env("POSTINFO_MASTER_DB_URL", "postgresql://app:app@postgres-master:5432/posts"))
+db_conn = wait_for_connection(get_env("POSTINFO_DB_URL", "postgresql://app:app@postgres-posts:5432/posts"))
 
 
 class BulkRequest(BaseModel):
@@ -40,9 +39,7 @@ def read_post(post_id: str):
         "created_at AS \"createdAt\" FROM posts WHERE id = %s"
     )
 
-    post = query_one(read_conn, query, (post_id,))
-    if not post:
-        post = query_one(master_conn, query, (post_id,))
+    post = query_one(db_conn, query, (post_id,))
     if not post:
         return None
 
@@ -80,7 +77,7 @@ def post_create(payload: CreatePostRequest):
         "media_key = EXCLUDED.media_key, created_at = EXCLUDED.created_at"
     )
     params = (payload.id, payload.authorId, payload.content, payload.mediaKey, created_at)
-    execute(master_conn, sql, params)
+    execute(db_conn, sql, params)
     return read_post(payload.id)
 
 

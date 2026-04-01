@@ -19,6 +19,8 @@ services:
       TIMELINE_SERVICE_URL: http://timeline-service:3003
     depends_on:
       - timeline-service
+    deploy:
+      replicas: ${READ_API_REPLICAS:-1}
 
   write-api:
     build:
@@ -30,6 +32,8 @@ services:
       PUBLICATION_SERVICE_URL: http://publication-service:3004
     depends_on:
       - publication-service
+    deploy:
+      replicas: ${WRITE_API_REPLICAS:-1}
 
   timeline-service:
     build:
@@ -45,6 +49,8 @@ services:
       - redis
       - user-service
       - postinfo-service
+    deploy:
+      replicas: ${TIMELINE_SERVICE_REPLICAS:-1}
 
   publication-service:
     build:
@@ -68,6 +74,8 @@ services:
       - postinfo-service
       - user-service
       - minio
+    deploy:
+      replicas: ${PUBLICATION_SERVICE_REPLICAS:-1}
 
   user-service:
     build:
@@ -81,6 +89,8 @@ services:
     depends_on:
       - redis
       - postgres-user
+    deploy:
+      replicas: ${USER_SERVICE_REPLICAS:-1}
 
   postinfo-service:
     build:
@@ -90,12 +100,12 @@ services:
     environment:
       PORT: 3006
       REDIS_URL: redis://redis:6379/0
-      POSTINFO_MASTER_DB_URL: postgresql://app:app@postgres-master:5432/posts
-      POSTINFO_REPLICA_DB_URL: postgresql://app:app@postgres-replica:5432/posts
+      POSTINFO_DB_URL: ${POSTINFO_DB_URL:-postgresql://app:app@postgres-posts:5432/posts}
     depends_on:
       - redis
-      - postgres-master
-      - postgres-replica
+      - postgres-posts
+    deploy:
+      replicas: ${POSTINFO_SERVICE_REPLICAS:-1}
 
   post-update-consumer:
     build:
@@ -111,6 +121,8 @@ services:
       - redis
       - kafka
       - user-service
+    deploy:
+      replicas: ${POST_UPDATE_CONSUMER_REPLICAS:-1}
 
   send-notification-consumer:
     build:
@@ -128,6 +140,8 @@ services:
       - user-service
       - postinfo-service
       - postgres-notifications
+    deploy:
+      replicas: ${SEND_NOTIFICATION_CONSUMER_REPLICAS:-1}
 
   redis:
     image: redis:7.4-alpine
@@ -186,7 +200,7 @@ services:
     ports:
       - "5433:5432"
 
-  postgres-master:
+  postgres-posts:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: posts
@@ -196,17 +210,6 @@ services:
       - ./docker/postgres/postinfo-master/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "5434:5432"
-
-  postgres-replica:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: posts
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-    volumes:
-      - ./docker/postgres/postinfo-replica/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "5435:5432"
 
   postgres-notifications:
     image: postgres:16-alpine
