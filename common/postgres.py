@@ -9,16 +9,22 @@ def create_connection(db_url: str):
 
 
 def wait_for_connection(db_url: str, retries: int = 30, delay: float = 2.0):
-    last_error = None
-    for _ in range(retries):
+    redacted_url = db_url
+    if "@" in db_url and "://" in db_url:
+        scheme, rest = db_url.split("://", 1)
+        redacted_url = f"{scheme}://***@{rest.split('@', 1)[1]}"
+
+    last_error = RuntimeError(f"Failed to connect to database: {redacted_url}")
+    attempts = max(1, retries)
+    for _ in range(attempts):
         try:
             return create_connection(db_url)
         except Exception as error:
             last_error = error
             time.sleep(delay)
-    if last_error is not None:
-        raise last_error
-    raise RuntimeError("Failed to connect to database")
+    raise RuntimeError(
+        f"Failed to connect after {attempts} attempts with {delay}s delay ({redacted_url}): {last_error}"
+    ) from last_error
 
 
 def query_one(conn, query: str, params: tuple = ()):

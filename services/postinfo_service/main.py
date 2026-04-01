@@ -65,7 +65,12 @@ def post_by_id(post_id: str):
 
 @app.post("/internal/posts/bulk")
 def post_bulk(payload: BulkRequest):
-    return {"posts": [post for post in (read_post(post_id) for post_id in payload.ids) if post]}
+    posts: list[dict] = []
+    for post_id in payload.ids:
+        post = read_post(post_id)
+        if post:
+            posts.append(post)
+    return {"posts": posts}
 
 
 @app.post("/internal/posts", status_code=201)

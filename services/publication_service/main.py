@@ -63,8 +63,10 @@ def health():
 
 @app.post("/internal/publications", status_code=201)
 def create_publication(payload: PublicationRequest):
-    if not payload.authorId or not payload.content:
-        raise HTTPException(status_code=400, detail="authorId and content are required")
+    if payload.authorId <= 0:
+        raise HTTPException(status_code=400, detail="authorId must be a positive integer")
+    if not payload.content.strip():
+        raise HTTPException(status_code=400, detail="content is required")
 
     post_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()

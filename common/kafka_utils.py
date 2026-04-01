@@ -35,4 +35,6 @@ def wait_kafka(bootstrap_servers: str, retries: int = 30, delay: float = 2.0) ->
             return
         except Exception:
             time.sleep(delay)
-    raise RuntimeError("Kafka is unavailable")
+    raise RuntimeError(
+        f"Kafka is unavailable after {retries} retries with {delay}s delay ({bootstrap_servers})"
+    )

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 
 from common.config import get_env, get_int_env
 from common.http import create_http_client
@@ -16,11 +16,13 @@ def health():
 
 
 @app.get("/feed")
-def feed(userId: int, limit: int = 20):
-    if userId <= 0:
-        raise HTTPException(status_code=400, detail="userId is required")
+def feed(user_id: int = Query(alias="userId"), limit: int = 20):
+    if user_id <= 0:
+        raise HTTPException(status_code=400, detail="userId must be a positive integer")
+    if limit <= 0:
+        raise HTTPException(status_code=400, detail="limit must be a positive integer")
 
-    resp = timeline_client.get(f"/internal/timeline/{userId}", params={"limit": limit})
+    resp = timeline_client.get(f"/internal/timeline/{user_id}", params={"limit": limit})
     resp.raise_for_status()
     return resp.json()
 

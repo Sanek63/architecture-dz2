@@ -1,8 +1,3 @@
-from pathlib import Path
-import sys
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 from common.config import get_env
 from common.kafka_utils import parse_event, serialize_event
 
