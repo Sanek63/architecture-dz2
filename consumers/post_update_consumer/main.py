@@ -1,4 +1,4 @@
-from kafka import KafkaConsumer
+from confluent_kafka import Consumer
 
 from common.config import get_env
 from common.http import create_http_client
@@ -8,22 +8,29 @@ from common.redis_client import create_redis_client
 redis_client = create_redis_client(get_env("REDIS_URL", "redis://redis:6379/0"))
 user_client = create_http_client(get_env("USER_SERVICE_URL", "http://user-service:3005"))
 
-kafka_brokers = get_env("KAFKA_BROKERS", "kafka:9092")
+kafka_brokers = get_env("KAFKA_BROKERS", "kafka:29092")
 timeline_topic = get_env("KAFKA_TIMELINE_TOPIC", "timeline.post-created")
 
 wait_kafka(kafka_brokers)
 ensure_topics(kafka_brokers, [timeline_topic])
 
-consumer = KafkaConsumer(
-    timeline_topic,
-    bootstrap_servers=kafka_brokers,
-    group_id="timeline-post-update-group",
-    auto_offset_reset="earliest",
-    enable_auto_commit=True,
+consumer = Consumer(
+    {
+        "bootstrap.servers": kafka_brokers,
+        "group.id": "timeline-post-update-group",
+        "auto.offset.reset": "earliest",
+    }
 )
+consumer.subscribe([timeline_topic])
 
-for message in consumer:
-    event = parse_event(message.value)
+while True:
+    message = consumer.poll(1.0)
+    if message is None:
+        continue
+    if message.error():
+        continue
+
+    event = parse_event(message.value())
     followers = event.get("followerIds")
     if followers is None:
         resp = user_client.get(f"/internal/users/{event['authorId']}/followers")

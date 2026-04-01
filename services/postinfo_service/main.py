@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
+import json
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from common.config import get_env, get_int_env
-from common.postgres import create_connection, execute, query_one
+from common.postgres import execute, query_one, wait_for_connection
 from common.redis_client import create_redis_client
 from common.server import run_app
 
@@ -12,8 +13,8 @@ app = FastAPI(title="postinfo-service")
 
 port = get_int_env("PORT", 3006)
 redis_client = create_redis_client(get_env("REDIS_URL", "redis://redis:6379/0"))
-read_conn = create_connection(get_env("POSTINFO_REPLICA_DB_URL", "postgresql://app:app@postgres-replica:5432/posts"))
-master_conn = create_connection(get_env("POSTINFO_MASTER_DB_URL", "postgresql://app:app@postgres-master:5432/posts"))
+read_conn = wait_for_connection(get_env("POSTINFO_REPLICA_DB_URL", "postgresql://app:app@postgres-replica:5432/posts"))
+master_conn = wait_for_connection(get_env("POSTINFO_MASTER_DB_URL", "postgresql://app:app@postgres-master:5432/posts"))
 
 
 class BulkRequest(BaseModel):
@@ -32,8 +33,6 @@ def read_post(post_id: str):
     key = f"post:{post_id}"
     cached = redis_client.get(key)
     if cached:
-        import json
-
         return json.loads(cached)
 
     query = (
@@ -49,8 +48,6 @@ def read_post(post_id: str):
 
     if hasattr(post["createdAt"], "isoformat"):
         post["createdAt"] = post["createdAt"].isoformat()
-
-    import json
 
     redis_client.setex(key, 600, json.dumps(post))
     return post
@@ -84,7 +81,6 @@ def post_create(payload: CreatePostRequest):
     )
     params = (payload.id, payload.authorId, payload.content, payload.mediaKey, created_at)
     execute(master_conn, sql, params)
-    execute(read_conn, sql, params)
     return read_post(payload.id)
 
 

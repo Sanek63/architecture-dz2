@@ -55,7 +55,7 @@ services:
       PORT: 3004
       USER_SERVICE_URL: http://user-service:3005
       POSTINFO_SERVICE_URL: http://postinfo-service:3006
-      KAFKA_BROKERS: kafka:9092
+      KAFKA_BROKERS: kafka:29092
       KAFKA_TIMELINE_TOPIC: timeline.post-created
       KAFKA_NOTIFICATION_TOPIC: notifications.post-created
       MINIO_HOST: minio
@@ -105,7 +105,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       USER_SERVICE_URL: http://user-service:3005
-      KAFKA_BROKERS: kafka:9092
+      KAFKA_BROKERS: kafka:29092
       KAFKA_TIMELINE_TOPIC: timeline.post-created
     depends_on:
       - redis
@@ -120,7 +120,7 @@ services:
     environment:
       USER_SERVICE_URL: http://user-service:3005
       POSTINFO_SERVICE_URL: http://postinfo-service:3006
-      KAFKA_BROKERS: kafka:9092
+      KAFKA_BROKERS: kafka:29092
       KAFKA_NOTIFICATION_TOPIC: notifications.post-created
       NOTIFICATION_DB_URL: postgresql://app:app@postgres-notifications:5432/notifications
     depends_on:
@@ -150,7 +150,8 @@ services:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   minio:

@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
+import io
 import uuid
 
+from confluent_kafka import Producer
 from fastapi import FastAPI, HTTPException
-from kafka import KafkaProducer
 from minio import Minio
 from pydantic import BaseModel
 
@@ -17,7 +18,7 @@ port = get_int_env("PORT", 3004)
 post_client = create_http_client(get_env("POSTINFO_SERVICE_URL", "http://postinfo-service:3006"))
 user_client = create_http_client(get_env("USER_SERVICE_URL", "http://user-service:3005"))
 
-kafka_brokers = get_env("KAFKA_BROKERS", "kafka:9092")
+kafka_brokers = get_env("KAFKA_BROKERS", "kafka:29092")
 timeline_topic = get_env("KAFKA_TIMELINE_TOPIC", "timeline.post-created")
 notification_topic = get_env("KAFKA_NOTIFICATION_TOPIC", "notifications.post-created")
 
@@ -31,7 +32,7 @@ media_bucket = get_env("MINIO_BUCKET", "media")
 
 wait_kafka(kafka_brokers)
 ensure_topics(kafka_brokers, [timeline_topic, notification_topic])
-producer = KafkaProducer(bootstrap_servers=kafka_brokers)
+producer = Producer({"bootstrap.servers": kafka_brokers})
 
 
 class PublicationRequest(BaseModel):
@@ -44,11 +45,12 @@ def upload_media(post_id: str, media_content: str | None) -> str | None:
     if not media_content:
         return None
     media_key = f"{post_id}.txt"
+    data = media_content.encode("utf-8")
     minio_client.put_object(
         media_bucket,
         media_key,
-        data=media_content.encode("utf-8"),
-        length=len(media_content.encode("utf-8")),
+        data=io.BytesIO(data),
+        length=len(data),
         content_type="text/plain",
     )
     return media_key
@@ -94,9 +96,10 @@ def create_publication(payload: PublicationRequest):
         "followerIds": follower_ids,
     }
 
-    producer.send(timeline_topic, key=str(payload.authorId).encode("utf-8"), value=serialize_event(event))
-    producer.send(notification_topic, key=str(payload.authorId).encode("utf-8"), value=serialize_event(event))
-    producer.flush()
+    data = serialize_event(event)
+    producer.produce(timeline_topic, key=str(payload.authorId), value=data)
+    producer.produce(notification_topic, key=str(payload.authorId), value=data)
+    producer.flush(10)
 
     return {
         "postId": post_id,
