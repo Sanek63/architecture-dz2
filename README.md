@@ -1,95 +1,68 @@
 # architecture-dz2
 
-Мини-проект социальной ленты по заданной архитектуре с API Gateway (nginx), синхронными сервисами, асинхронными Kafka-консьюмерами, Redis, PostgreSQL и S3-совместимым Object Storage (MinIO).
+Мини-проект по заданной архитектуре на **Python** с API Gateway (nginx), набором сервисов, Kafka-консьюмерами, Redis, PostgreSQL и MinIO.
 
-## Что реализовано
+## Структура проекта
 
-- **API Gateway (nginx)**
-  - `GET /api/v1/feed` → Read API
-  - `POST /api/v1/posts` → Write API
-  - `/media/*` → Object Storage (MinIO)
-- **Read API** → **Timeline Service**
-- **Write API** → **Publication Service**
-- **Timeline Service**
-  - читает `feed:{userId}` из Redis
-  - гидратирует посты через PostInfo Service
-  - гидратирует авторов через User Service
-- **User Service**
-  - Redis cache + PostgreSQL users
-  - выдаёт профиль и подписчиков
-- **PostInfo Service**
-  - Redis cache + PostgreSQL read replica
-  - fallback в PostgreSQL master
-  - запись постов в master (и синхронно в replica для демо)
-- **Publication Service**
-  - создаёт пост
-  - сохраняет медиа в MinIO
-  - публикует события в Kafka в **разные топики**:
-    - `timeline.post-created`
-    - `notifications.post-created`
-- **Асинхронные консьюмеры**
-  - `post-update-consumer`: читает `timeline.post-created`, обновляет Redis-ленты подписчиков
-  - `send-notification-consumer`: читает `notifications.post-created`, пишет лог успешной отправки в PostgreSQL notifications
+- `common/` — общие модули (config/http/redis/postgres/kafka/server)
+- `services/`
+  - `read_api`
+  - `write_api`
+  - `timeline_service`
+  - `user_service`
+  - `postinfo_service`
+  - `publication_service`
+- `consumers/`
+  - `post_update_consumer`
+  - `send_notification_consumer`
+- `docker/` — nginx и SQL-инициализация БД
+- `docker-compose.yml` — полный запуск системы
 
-## Сервисы в docker-compose
+## Что реализовано по схеме
 
-- `gateway`
-- `read-api`
-- `write-api`
-- `timeline-service`
-- `publication-service`
-- `user-service`
-- `postinfo-service`
-- `post-update-consumer`
-- `send-notification-consumer`
-- `redis`
-- `zookeeper`, `kafka`
-- `minio`, `minio-init`
-- `postgres-user`
-- `postgres-master`
-- `postgres-replica`
-- `postgres-notifications`
+- Вход через `API Gateway (nginx)`.
+- `GET /api/v1/feed` → `read-api` → `timeline-service`.
+- `timeline-service` читает ленту пользователя из Redis (`feed:{userId}`) и гидратирует:
+  - автора через `user-service` (Redis + PostgreSQL users)
+  - посты через `postinfo-service` (Redis + PostgreSQL replica, fallback в master)
+- `POST /api/v1/posts` → `write-api` → `publication-service`.
+- `publication-service` создаёт пост, кладёт медиа в MinIO и публикует события в Kafka в **разные топики**:
+  - `timeline.post-created`
+  - `notifications.post-created`
+- `post-update-consumer` читает `timeline.post-created` и обновляет Redis-ленты подписчиков.
+- `send-notification-consumer` читает `notifications.post-created`, подтягивает данные из `user-service`/`postinfo-service`, пишет результат отправки в PostgreSQL notifications.
 
-## Запуск
+## Запуск через docker-compose
 
 ```bash
 docker compose up --build
 ```
 
-Gateway доступен на `http://localhost:8080`.
+Gateway: `http://localhost:8080`
 
 ## Примеры запросов
 
-### Создать пост
+### Создание поста
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/posts \
   -H 'Content-Type: application/json' \
   -d '{
     "authorId": 1,
-    "content": "Привет, это новый пост",
-    "mediaContent": "demo-media-content"
+    "content": "Привет, это пост",
+    "mediaContent": "demo-media"
   }'
 ```
 
-### Прочитать ленту
+### Чтение ленты
 
 ```bash
 curl "http://localhost:8080/api/v1/feed?userId=2&limit=20"
 ```
 
-Пользователь `2` подписан на пользователя `1`, поэтому после обработки Kafka-события новый пост попадёт в его Redis-ленту.
-
-## Топики Kafka
-
-- `timeline.post-created` — событие для обновления лент
-- `notifications.post-created` — событие для отправки уведомлений
-
-## Локальные npm-команды
+## Локальная проверка Python-кода
 
 ```bash
-npm install
-npm run lint
-npm run build
-npm test
+python -m compileall common services consumers
+python tests/smoke_test.py
 ```

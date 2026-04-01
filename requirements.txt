@@ -1,0 +1,7 @@
+fastapi==0.115.12
+uvicorn==0.34.0
+redis==5.2.1
+psycopg==3.2.9
+httpx==0.28.1
+kafka-python==2.0.2
+minio==7.2.15

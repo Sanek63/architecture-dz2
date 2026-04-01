@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   gateway:
     image: nginx:1.27-alpine
@@ -15,7 +13,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["node", "src/read-api.js"]
+    command: ["python", "-m", "services.read_api.main"]
     environment:
       PORT: 3001
       TIMELINE_SERVICE_URL: http://timeline-service:3003
@@ -26,7 +24,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["node", "src/write-api.js"]
+    command: ["python", "-m", "services.write_api.main"]
     environment:
       PORT: 3002
       PUBLICATION_SERVICE_URL: http://publication-service:3004
@@ -37,10 +35,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["node", "src/timeline-service.js"]
+    command: ["python", "-m", "services.timeline_service.main"]
     environment:
       PORT: 3003
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://redis:6379/0
       USER_SERVICE_URL: http://user-service:3005
       POSTINFO_SERVICE_URL: http://postinfo-service:3006
     depends_on:
@@ -52,7 +50,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["node", "src/publication-service.js"]
+    command: ["python", "-m", "services.publication_service.main"]
     environment:
       PORT: 3004
       USER_SERVICE_URL: http://user-service:3005
@@ -75,11 +73,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["node", "src/user-service.js"]
+    command: ["python", "-m", "services.user_service.main"]
     environment:
       PORT: 3005
-      REDIS_URL: redis://redis:6379
-      USER_DB_URL: postgres://app:app@postgres-user:5432/users
+      REDIS_URL: redis://redis:6379/0
+      USER_DB_URL: postgresql://app:app@postgres-user:5432/users
     depends_on:
       - redis
       - postgres-user
@@ -88,12 +86,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["node", "src/postinfo-service.js"]
+    command: ["python", "-m", "services.postinfo_service.main"]
     environment:
       PORT: 3006
-      REDIS_URL: redis://redis:6379
-      POSTINFO_MASTER_DB_URL: postgres://app:app@postgres-master:5432/posts
-      POSTINFO_REPLICA_DB_URL: postgres://app:app@postgres-replica:5432/posts
+      REDIS_URL: redis://redis:6379/0
+      POSTINFO_MASTER_DB_URL: postgresql://app:app@postgres-master:5432/posts
+      POSTINFO_REPLICA_DB_URL: postgresql://app:app@postgres-replica:5432/posts
     depends_on:
       - redis
       - postgres-master
@@ -103,9 +101,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["node", "src/post-update-consumer.js"]
+    command: ["python", "-m", "consumers.post_update_consumer.main"]
     environment:
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://redis:6379/0
       USER_SERVICE_URL: http://user-service:3005
       KAFKA_BROKERS: kafka:9092
       KAFKA_TIMELINE_TOPIC: timeline.post-created
@@ -118,13 +116,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["node", "src/send-notification-consumer.js"]
+    command: ["python", "-m", "consumers.send_notification_consumer.main"]
     environment:
       USER_SERVICE_URL: http://user-service:3005
       POSTINFO_SERVICE_URL: http://postinfo-service:3006
       KAFKA_BROKERS: kafka:9092
       KAFKA_NOTIFICATION_TOPIC: notifications.post-created
-      NOTIFICATION_DB_URL: postgres://app:app@postgres-notifications:5432/notifications
+      NOTIFICATION_DB_URL: postgresql://app:app@postgres-notifications:5432/notifications
     depends_on:
       - kafka
       - user-service
