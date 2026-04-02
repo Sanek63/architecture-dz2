@@ -16,13 +16,15 @@ def health():
 
 
 @app.get("/feed")
-def feed(user_id: int = Query(alias="userId"), limit: int = 20):
+def feed(user_id: int = Query(alias="userId"), cursor: int = 0, limit: int = 20):
     if user_id <= 0:
         raise HTTPException(status_code=400, detail="userId must be a positive integer")
+    if cursor < 0:
+        raise HTTPException(status_code=400, detail="cursor must be a non-negative integer")
     if limit <= 0:
         raise HTTPException(status_code=400, detail="limit must be a positive integer")
 
-    resp = timeline_client.get(f"/internal/timeline/{user_id}", params={"limit": limit})
+    resp = timeline_client.get(f"/internal/timeline/{user_id}", params={"cursor": cursor, "limit": limit})
     resp.raise_for_status()
     return resp.json()
 

@@ -24,7 +24,7 @@ class CreatePostRequest(BaseModel):
     id: str
     authorId: int
     content: str
-    mediaKey: str | None = None
+    mediaBase64: str | None = None
     createdAt: str | None = None
 
 
@@ -35,8 +35,9 @@ def read_post(post_id: str):
         return json.loads(cached)
 
     query = (
-        "SELECT id::text AS id, author_id AS \"authorId\", content, media_key AS \"mediaKey\", "
-        "created_at AS \"createdAt\" FROM posts WHERE id = %s"
+        "SELECT id::text AS id, author_id AS \"authorId\", content, "
+        "encode(media_blob, 'base64') AS \"mediaBase64\", created_at AS \"createdAt\" "
+        "FROM posts WHERE id = %s"
     )
 
     post = query_one(db_conn, query, (post_id,))
@@ -53,6 +54,9 @@ def read_post(post_id: str):
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+execute(db_conn, "ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_blob BYTEA")
 
 
 @app.get("/internal/posts/{post_id}")
@@ -77,11 +81,11 @@ def post_bulk(payload: BulkRequest):
 def post_create(payload: CreatePostRequest):
     created_at = payload.createdAt or datetime.now(timezone.utc).isoformat()
     sql = (
-        "INSERT INTO posts(id, author_id, content, media_key, created_at) VALUES (%s::uuid, %s, %s, %s, %s) "
+        "INSERT INTO posts(id, author_id, content, media_blob, created_at) VALUES (%s::uuid, %s, %s, decode(%s, 'base64'), %s) "
         "ON CONFLICT (id) DO UPDATE SET author_id = EXCLUDED.author_id, content = EXCLUDED.content, "
-        "media_key = EXCLUDED.media_key, created_at = EXCLUDED.created_at"
+        "media_blob = EXCLUDED.media_blob, created_at = EXCLUDED.created_at"
     )
-    params = (payload.id, payload.authorId, payload.content, payload.mediaKey, created_at)
+    params = (payload.id, payload.authorId, payload.content, payload.mediaBase64, created_at)
     execute(db_conn, sql, params)
     return read_post(payload.id)
 
