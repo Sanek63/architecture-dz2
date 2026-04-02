@@ -10,11 +10,12 @@ POSTINFO_SERVICE_REPLICAS ?= 1
 POST_UPDATE_CONSUMER_REPLICAS ?= 1
 SEND_NOTIFICATION_CONSUMER_REPLICAS ?= 1
 
-.PHONY: help install check up up-perf down restart ps logs clean
+.PHONY: help install check test-system up up-perf down restart ps logs clean
 
 help:
 	@echo "install      - install Python deps"
 	@echo "check        - compile modules + run smoke test"
+	@echo "test-system  - full e2e test via gateway endpoints from API spec"
 	@echo "up           - start stack with \\$(ENV_FILE)"
 	@echo "up-perf      - start scaled stack (override replicas via make vars)"
 	@echo "down         - stop stack"
@@ -29,6 +30,12 @@ install:
 check:
 	python -m compileall common services consumers
 	PYTHONPATH=. python tests/smoke_test.py
+
+test-system:
+	@set -e; \
+	trap '$(COMPOSE) --env-file $(ENV_FILE) down -v' EXIT; \
+	$(COMPOSE) --env-file $(ENV_FILE) up -d --build; \
+	PYTHONPATH=. python tests/system_test.py
 
 up:
 	$(COMPOSE) --env-file $(ENV_FILE) up -d --build
