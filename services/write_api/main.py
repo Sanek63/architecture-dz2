@@ -1,4 +1,5 @@
 import base64
+import uuid
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 
@@ -71,7 +72,7 @@ def debug_seed(
             post_resp = post_client.post(
                 "/internal/posts",
                 json={
-                    "id": f"00000000-0000-0000-0000-{author_id:04d}{idx:08d}",
+                    "id": str(uuid.uuid4()),
                     "authorId": author_id,
                     "content": f"seed post {idx} by user {author_id}",
                     "mediaBase64": None,

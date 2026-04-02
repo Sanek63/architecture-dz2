@@ -56,9 +56,6 @@ def health():
     return {"ok": True}
 
 
-execute(db_conn, "ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_blob BYTEA")
-
-
 @app.get("/internal/posts/{post_id}")
 def post_by_id(post_id: str):
     post = read_post(post_id)

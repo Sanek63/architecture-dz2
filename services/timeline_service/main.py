@@ -55,7 +55,8 @@ def timeline(user_id: int, cursor: int = 0, limit: int = 20):
         authors = dict(pool.map(fetch_author, author_ids))
 
     hydrated_posts = [{**post, "author": authors.get(post["authorId"])} for post in posts]
-    next_cursor = cursor + len(hydrated_posts) if hydrated_posts else None
+    has_more = len(redis_client.lrange(f"feed:{user_id}", cursor + limit, cursor + limit)) > 0
+    next_cursor = cursor + len(hydrated_posts) if has_more else None
     return {"userId": user_id, "cursor": cursor, "nextCursor": next_cursor, "posts": hydrated_posts}
 
 
