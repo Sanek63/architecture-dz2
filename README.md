@@ -1,18 +1,13 @@
 # architecture-dz2
 
-Лаконичная реализация микросервисной ленты на Python с API Gateway (nginx), Redis, Kafka, PostgreSQL и MinIO.
+Лаконичная реализация микросервисной ленты на Python с API Gateway (nginx), Redis и PostgreSQL.
 
 ## Архитектура
 
-- Gateway: `GET /api/v1/feed`, `POST /api/v1/posts`
+- Gateway: `GET /api/v1/feed`, `POST /api/v1/posts`, `GET /api/v1/debug/seed`
 - Read-path: `read-api -> timeline-service -> (user-service + postinfo-service)`
-- Write-path: `write-api -> publication-service -> postinfo-service + MinIO`
-- Async:
-  - `post-update-consumer` читает `timeline.post-created` и обновляет Redis feed
-  - `send-notification-consumer` читает `notifications.post-created` и пишет логи в PostgreSQL
-- Kafka общая, топики разные:
-  - `timeline.post-created`
-  - `notifications.post-created`
+- Write-path: `write-api -> publication-service -> postinfo-service`
+- Push-path: `publication-service -> push-service`
 
 ## Важно про Postgres replica
 
@@ -20,9 +15,9 @@
 
 ## Структура
 
-- `common/` — конфиг, HTTP, Redis, Postgres, Kafka утилиты
-- `services/` — `read_api`, `write_api`, `timeline_service`, `user_service`, `postinfo_service`, `publication_service`
-- `consumers/` — `post_update_consumer`, `send_notification_consumer`
+- `common/` — конфиг, HTTP, Redis, Postgres утилиты
+- `services/` — `read_api`, `write_api`, `timeline_service`, `user_service`, `postinfo_service`, `publication_service`, `push_service`
+- `consumers/` — фоновые консьюмеры (legacy)
 - `docker/` — nginx + SQL init
 - `deploy/env/` — env-профили
 - `Makefile` — запуск/остановка/масштабирование
@@ -30,14 +25,16 @@
 ## Краткая документация сервисов
 
 - **read-api**
-  - `GET /feed?userId=&limit=`
+  - `GET /feed?userId=&cursor=&limit=`
   - Прокси к timeline-service
 - **write-api**
-  - `POST /posts`
+  - `POST /posts` (multipart/form-data: `authorId`, `content`, `media`)
+  - `GET /debug/seed?users_count=&max_followers_for_celeb=&posts_per_users=`
   - Передача публикации в publication-service
 - **timeline-service**
   - `GET /internal/timeline/{userId}`
-  - Читает `feed:{userId}` из Redis и гидратирует пост+автора
+  - `POST /internal/timeline/publish`
+  - Читает `feed:{userId}` из Redis c cursor/limit и гидратирует пост+автора
 - **user-service**
   - `GET /internal/users/{id}`
   - `GET /internal/users/{id}/followers`
@@ -46,14 +43,13 @@
   - `GET /internal/posts/{id}`
   - `POST /internal/posts/bulk`
   - `POST /internal/posts`
-  - Redis cache + PostgreSQL posts
+  - Redis cache + PostgreSQL posts (`BYTEA` для media)
 - **publication-service**
   - `POST /internal/publications`
-  - Создает пост, кладет media в MinIO, публикует в 2 Kafka topic
-- **post-update-consumer**
-  - Консьюмит `timeline.post-created`, обновляет Redis feeds
-- **send-notification-consumer**
-  - Консьюмит `notifications.post-created`, пишет логи доставки в PostgreSQL
+  - Создает пост, синхронно обновляет feed и отправляет push по подписчикам
+- **push-service**
+  - `POST /internal/push`
+  - Логирует отправку push в PostgreSQL notifications
 
 ## Makefile
 
@@ -112,8 +108,11 @@ make up-perf READ_API_REPLICAS=8 TIMELINE_SERVICE_REPLICAS=8 POSTINFO_SERVICE_RE
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/posts \
-  -H 'Content-Type: application/json' \
-  -d '{"authorId":1,"content":"hello","mediaContent":"demo"}'
+  -F 'authorId=1' \
+  -F 'content=hello' \
+  -F 'media=@/path/to/file.bin'
 
-curl "http://localhost:8080/api/v1/feed?userId=2&limit=20"
+curl "http://localhost:8080/api/v1/feed?userId=2&cursor=0&limit=20"
+
+curl "http://localhost:8080/api/v1/debug/seed?users_count=100&max_followers_for_celeb=1000&posts_per_users=5"
 ```

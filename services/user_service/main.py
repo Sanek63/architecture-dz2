@@ -3,7 +3,7 @@ import json
 from fastapi import FastAPI, HTTPException
 
 from common.config import get_env, get_int_env
-from common.postgres import query_all, query_one, wait_for_connection
+from common.postgres import execute, query_all, query_one, wait_for_connection
 from common.redis_client import create_redis_client
 from common.server import run_app
 
@@ -53,6 +53,40 @@ def user_followers(user_id: int):
         (user_id,),
     )
     return {"userId": user_id, "followerIds": [row["follower_id"] for row in rows]}
+
+
+@app.post("/internal/debug/seed")
+def debug_seed(usersCount: int, maxFollowersForCeleb: int, postsPerUsers: int):
+    if usersCount <= 0 or maxFollowersForCeleb < 0 or postsPerUsers < 0:
+        raise HTTPException(status_code=400, detail="Invalid seed params")
+
+    user_rows = []
+    for i in range(1, usersCount + 1):
+        user_rows.append((i, f"User {i}", f"user{i}@example.com", f"token-{i}"))
+    execute(pg_conn, "DELETE FROM follows")
+    execute(pg_conn, "DELETE FROM users")
+    for row in user_rows:
+        execute(
+            pg_conn,
+            "INSERT INTO users(id, name, email, device_token) VALUES (%s, %s, %s, %s) ON CONFLICT (id) DO NOTHING",
+            row,
+        )
+
+    celeb_id = 1
+    followers = min(maxFollowersForCeleb, max(0, usersCount - 1))
+    for follower_id in range(2, followers + 2):
+        execute(
+            pg_conn,
+            "INSERT INTO follows(follower_id, followee_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            (follower_id, celeb_id),
+        )
+
+    return {
+        "usersCount": usersCount,
+        "maxFollowersForCeleb": maxFollowersForCeleb,
+        "postsPerUsers": postsPerUsers,
+        "seededFollowersForCeleb": followers,
+    }
 
 
 if __name__ == "__main__":

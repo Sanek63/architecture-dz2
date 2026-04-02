@@ -61,19 +61,13 @@ services:
       PORT: 3004
       USER_SERVICE_URL: http://user-service:3005
       POSTINFO_SERVICE_URL: http://postinfo-service:3006
-      KAFKA_BROKERS: kafka:29092
-      KAFKA_TIMELINE_TOPIC: timeline.post-created
-      KAFKA_NOTIFICATION_TOPIC: notifications.post-created
-      MINIO_HOST: minio
-      MINIO_PORT: 9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-      MINIO_BUCKET: media
+      TIMELINE_SERVICE_URL: http://timeline-service:3003
+      PUSH_SERVICE_URL: http://push-service:3007
     depends_on:
-      - kafka
+      - timeline-service
       - postinfo-service
       - user-service
-      - minio
+      - push-service
     deploy:
       replicas: ${PUBLICATION_SERVICE_REPLICAS:-1}
 
@@ -142,6 +136,17 @@ services:
       - postgres-notifications
     deploy:
       replicas: ${SEND_NOTIFICATION_CONSUMER_REPLICAS:-1}
+
+  push-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "services.push_service.main"]
+    environment:
+      PORT: 3007
+      NOTIFICATION_DB_URL: postgresql://app:app@postgres-notifications:5432/notifications
+    depends_on:
+      - postgres-notifications
 
   redis:
     image: redis:7.4-alpine
