@@ -1,6 +1,4 @@
 import json
-import os
-import tempfile
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -45,31 +43,20 @@ def _call_seed(users_count: int, max_followers_for_celeb: int, posts_per_users: 
 
 def _post_with_media(author_id: int, content: str, media_payload: bytes):
     boundary = "----architecture-dz2-boundary"
-    with tempfile.NamedTemporaryFile(delete=False) as media_file:
-        media_file.write(media_payload)
-        media_file_path = media_file.name
+    payload = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="authorId"\r\n\r\n'
+        f"{author_id}\r\n"
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="content"\r\n\r\n'
+        f"{content}\r\n"
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="media"; filename="media.bin"\r\n'
+        "Content-Type: application/octet-stream\r\n\r\n"
+    ).encode("utf-8") + media_payload + f"\r\n--{boundary}--\r\n".encode("utf-8")
 
-    try:
-        with open(media_file_path, "rb") as media_handle:
-            media_bytes = media_handle.read()
-
-        payload = (
-            f"--{boundary}\r\n"
-            'Content-Disposition: form-data; name="authorId"\r\n\r\n'
-            f"{author_id}\r\n"
-            f"--{boundary}\r\n"
-            'Content-Disposition: form-data; name="content"\r\n\r\n'
-            f"{content}\r\n"
-            f"--{boundary}\r\n"
-            'Content-Disposition: form-data; name="media"; filename="media.bin"\r\n'
-            "Content-Type: application/octet-stream\r\n\r\n"
-        ).encode("utf-8") + media_bytes + f"\r\n--{boundary}--\r\n".encode("utf-8")
-
-        headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
-        return _request_json("POST", "/api/v1/posts", data=payload, headers=headers)
-    finally:
-        if os.path.exists(media_file_path):
-            os.unlink(media_file_path)
+    headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+    return _request_json("POST", "/api/v1/posts", data=payload, headers=headers)
 
 
 def _get_feed(user_id: int, cursor: int, limit: int):
