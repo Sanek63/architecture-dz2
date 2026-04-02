@@ -1,0 +1,223 @@
+services:
+  gateway:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - read-api
+      - write-api
+
+  read-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "services.read_api.main"]
+    environment:
+      PORT: 3001
+      TIMELINE_SERVICE_URL: http://timeline-service:3003
+    depends_on:
+      - timeline-service
+    deploy:
+      replicas: ${READ_API_REPLICAS:-1}
+
+  write-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "services.write_api.main"]
+    environment:
+      PORT: 3002
+      PUBLICATION_SERVICE_URL: http://publication-service:3004
+    depends_on:
+      - publication-service
+    deploy:
+      replicas: ${WRITE_API_REPLICAS:-1}
+
+  timeline-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "services.timeline_service.main"]
+    environment:
+      PORT: 3003
+      REDIS_URL: redis://redis:6379/0
+      USER_SERVICE_URL: http://user-service:3005
+      POSTINFO_SERVICE_URL: http://postinfo-service:3006
+    depends_on:
+      - redis
+      - user-service
+      - postinfo-service
+    deploy:
+      replicas: ${TIMELINE_SERVICE_REPLICAS:-1}
+
+  publication-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "services.publication_service.main"]
+    environment:
+      PORT: 3004
+      USER_SERVICE_URL: http://user-service:3005
+      POSTINFO_SERVICE_URL: http://postinfo-service:3006
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TIMELINE_TOPIC: timeline.post-created
+      KAFKA_NOTIFICATION_TOPIC: notifications.post-created
+      MINIO_HOST: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: media
+    depends_on:
+      - kafka
+      - postinfo-service
+      - user-service
+      - minio
+    deploy:
+      replicas: ${PUBLICATION_SERVICE_REPLICAS:-1}
+
+  user-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "services.user_service.main"]
+    environment:
+      PORT: 3005
+      REDIS_URL: redis://redis:6379/0
+      USER_DB_URL: postgresql://app:app@postgres-user:5432/users
+    depends_on:
+      - redis
+      - postgres-user
+    deploy:
+      replicas: ${USER_SERVICE_REPLICAS:-1}
+
+  postinfo-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "services.postinfo_service.main"]
+    environment:
+      PORT: 3006
+      REDIS_URL: redis://redis:6379/0
+      POSTINFO_DB_URL: ${POSTINFO_DB_URL:-postgresql://app:app@postgres-posts:5432/posts}
+    depends_on:
+      - redis
+      - postgres-posts
+    deploy:
+      replicas: ${POSTINFO_SERVICE_REPLICAS:-1}
+
+  post-update-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "consumers.post_update_consumer.main"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      USER_SERVICE_URL: http://user-service:3005
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TIMELINE_TOPIC: timeline.post-created
+    depends_on:
+      - redis
+      - kafka
+      - user-service
+    deploy:
+      replicas: ${POST_UPDATE_CONSUMER_REPLICAS:-1}
+
+  send-notification-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "consumers.send_notification_consumer.main"]
+    environment:
+      USER_SERVICE_URL: http://user-service:3005
+      POSTINFO_SERVICE_URL: http://postinfo-service:3006
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_NOTIFICATION_TOPIC: notifications.post-created
+      NOTIFICATION_DB_URL: postgresql://app:app@postgres-notifications:5432/notifications
+    depends_on:
+      - kafka
+      - user-service
+      - postinfo-service
+      - postgres-notifications
+    deploy:
+      replicas: ${SEND_NOTIFICATION_CONSUMER_REPLICAS:-1}
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  minio:
+    image: minio/minio:RELEASE.2025-02-18T16-25-55Z
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-02-21T16-00-46Z
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin; do sleep 1; done;
+      /usr/bin/mc mb myminio/media --ignore-existing;
+      exit 0;
+      "
+
+  postgres-user:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: users
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    volumes:
+      - ./docker/postgres/user/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5433:5432"
+
+  postgres-posts:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: posts
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    volumes:
+      - ./docker/postgres/postinfo-master/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5434:5432"
+
+  postgres-notifications:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: notifications
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    volumes:
+      - ./docker/postgres/notifications/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5436:5432"
