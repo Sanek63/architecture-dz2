@@ -50,12 +50,12 @@ def _wait_gateway_ready(max_attempts: int = 60, delay_seconds: float = 2.0):
     raise RuntimeError("gateway did not become ready in time")
 
 
-def _call_seed(users_count: int, max_followers_for_celeb: int, posts_per_users: int):
+def _call_seed(users_count: int, max_followers_for_celeb: int, posts_per_user: int):
     query = urlencode(
         {
             "users_count": users_count,
             "max_followers_for_celeb": max_followers_for_celeb,
-            "posts_per_users": posts_per_users,
+            "posts_per_users": posts_per_user,
         }
     )
     return _request_json_with_retry("GET", f"/api/v1/debug/seed?{query}")
@@ -87,7 +87,7 @@ def _get_feed(user_id: int, cursor: int, limit: int):
 def test_system_flow_via_gateway():
     _wait_gateway_ready()
 
-    seed_status, seed_payload = _call_seed(users_count=5, max_followers_for_celeb=4, posts_per_users=0)
+    seed_status, seed_payload = _call_seed(users_count=5, max_followers_for_celeb=4, posts_per_user=0)
     assert seed_status == 200
     assert seed_payload["status"] == "ok"
 
@@ -101,7 +101,7 @@ def test_system_flow_via_gateway():
     assert post_payload["content"] == "system test post with media"
     assert post_payload["mediaBase64"] is not None
 
-    # users 2..5 follow user 1 after seed(max_followers_for_celeb=4), verify fan-out in feed.
+    # users 2..5 follow user 1 after seed(max_followers_for_celeb=4), verify fanout in feed.
     feed_status, feed_payload = _get_feed(user_id=2, cursor=0, limit=20)
     assert feed_status == 200
     assert feed_payload["userId"] == 2
