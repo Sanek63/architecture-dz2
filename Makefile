@@ -53,6 +53,7 @@ up-perf:
 
 down:
 	$(COMPOSE) --env-file $(ENV_FILE) down
+	$(COMPOSE) --env-file deploy/env/perf.env down
 
 restart: down up
 
