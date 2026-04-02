@@ -58,6 +58,7 @@
 ```bash
 make install
 make check
+make test-system
 ```
 
 ### Запуск (dev)
